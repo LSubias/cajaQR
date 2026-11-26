@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Venta #{{ sale.id }} · Caja QR{% endblock %}
+{% block header_actions %}
+  {% if g.user %}
+  <a class="buyer-back" href="{{ url_for('register') }}">← Volver a Caja</a>
+  {% else %}
+  <button id="go-back" type="button" class="buyer-back">← Volver</button>
+  {% endif %}
+{% endblock %}
+{% block content %}
+<main class="narrow">
+  <span id="back-message" role="status"></span>
+  <h1>Venta #{{ sale.id }}</h1>
+  <section class="panel stack">
+    {% for item in items %}
+    <div class="line"><span>{{ item.quantity }} × {{ item.name }}{% if item.size %} · Talle {{ item.size }}{% endif %}</span><strong>{{ (item.quantity * item.unit)|money }}</strong></div>
+    {% endfor %}
+    <div class="total"><span>Total a transferir</span><strong>{{ sale.total|money }}</strong></div>
+  </section>
+  <section class="panel stack sales">
+    {% if sale.received %}
+    <h2>Comprobante recibido</h2>
+    <img class="receipt" src="{{ url_for('buyer_receipt', token=token) }}" alt="Captura de tu transferencia">
+    {% else %}
+    <h2>Comprobante de transferencia</h2>
+    <form method="post" enctype="multipart/form-data" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Elegí la captura después de transferir
+        <input type="file" name="receipt" accept="image/jpeg,image/png,image/webp" required>
+      </label>
+      <small>JPG, PNG o WebP. Hasta 6 MB.</small>
+      {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+      <button>Subir comprobante</button>
+    </form>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}

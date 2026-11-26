@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<main data-page="register">
+  <h1>Caja</h1>
+  <p id="message" role="status"></p>
+  <div class="columns">
+    <section class="panel stack">
+      <h2>Productos</h2>
+      <input id="search" type="search" placeholder="Buscar producto" aria-label="Buscar producto">
+      <div id="catalog"></div>
+    </section>
+    <div class="stack checkout">
+      <section class="panel stack">
+        <h2>Carrito</h2>
+        <div id="cart"></div>
+        <div class="total"><span>Total</span><strong id="total">$0,00</strong></div>
+        <button id="create" disabled>Generar QR</button>
+      </section>
+      <section id="qr" class="panel stack" aria-label="Venta generada" hidden></section>
+    </div>
+  </div>
+</main>
+{% endblock %}

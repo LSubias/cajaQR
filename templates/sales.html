@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Ventas · Caja QR{% endblock %}
+{% block content %}
+<main data-page="sales">
+  <h1>Ventas</h1>
+  <p id="message" role="status"></p>
+  {% if g.user.role == "admin" %}
+  <section class="panel stack">
+    <div class="dashboard-header">
+      <div>
+        <h2>Resumen de ventas</h2>
+        <small>Ventas con el pago verificado.</small>
+      </div>
+      <label>Empleado
+        <select id="employee"><option value="">Todos los empleados</option></select>
+      </label>
+    </div>
+    <div id="sales-metrics" class="metric-grid"></div>
+    <div id="sales-rankings" class="metric-grid"></div>
+    <div class="report-grid">
+      <section class="metric-card">
+        <h3>Ventas por empleado</h3>
+        <div id="employee-report"></div>
+      </section>
+      <section class="metric-card">
+        <h3>Ventas por día</h3>
+        <div id="daily-report"></div>
+      </section>
+    </div>
+  </section>
+  {% endif %}
+  <section id="qr" class="panel stack sales" aria-label="QR de la venta" hidden></section>
+  <section class="panel stack sales">
+    <h2>{{ "Historial" if g.user.role == "admin" else "Mis ventas" }}</h2>
+    <div id="sales"></div>
+  </section>
+</main>
+{% endblock %}

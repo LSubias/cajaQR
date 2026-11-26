@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<main class="narrow">
+  <h1>Ingresar a la caja</h1>
+  <form method="post" class="panel stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Usuario <input name="username" autocomplete="username" autocapitalize="none" required></label>
+    <label>Contraseña <input type="password" name="password" autocomplete="current-password" required></label>
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <button>Ingresar</button>
+  </form>
+</main>
+{% endblock %}
