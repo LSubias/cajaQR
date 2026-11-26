@@ -34,10 +34,16 @@ def local_session_key(instance_path):
         return key_file.read_bytes()
 
 
-app = Flask(__name__)
-app.config.update(MAX_CONTENT_LENGTH=6 * 1024 * 1024, MAX_FORM_MEMORY_SIZE=128 * 1024)
-app.secret_key = os.environ.get("CAJA_SESSION_KEY") or local_session_key(app.instance_path)
-public_url = os.environ.get("CAJA_PUBLIC_URL", "http://127.0.0.1:5000").rstrip("/")
+app = Flask(__name__, static_folder="public/static", static_url_path="/static")
+deployed = os.environ.get("VERCEL") == "1"
+database_url = os.environ.get("CAJA_DATABASE_URL")
+app.config.update(MAX_CONTENT_LENGTH=(4 if deployed else 6) * 1024 * 1024, MAX_FORM_MEMORY_SIZE=128 * 1024)
+app.secret_key = os.environ.get("CAJA_SESSION_KEY") or (None if deployed else local_session_key(app.instance_path))
+app.config["SESSION_COOKIE_SECURE"] = deployed
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+hostname = os.environ.get("VERCEL_PROJECT_PRODUCTION_URL") or os.environ.get("VERCEL_URL")
+default_url = f"https://{hostname}" if deployed and hostname else "http://127.0.0.1:5000"
+public_url = os.environ.get("CAJA_PUBLIC_URL", default_url).rstrip("/")
 Image.MAX_IMAGE_PIXELS = 16_000_000
 
 
@@ -51,6 +57,14 @@ DEMO_CATEGORIES = {
 
 def db():
     if "db" not in g:
+        if database_url:
+            from postgres import Postgres
+
+            g.db = Postgres(database_url)
+            g.db.execute("SET search_path TO cajaqr, pg_catalog")
+            return g.db
+        if deployed:
+            abort(503, "Caja QR todavía no tiene una base configurada.")
         Path(app.instance_path).mkdir(exist_ok=True)
         g.db = sqlite3.connect(Path(app.instance_path) / "caja.sqlite3")
         g.db.row_factory = sqlite3.Row
@@ -97,11 +111,18 @@ def migrate_products(connection):
             if column not in columns:
                 connection.execute(f"ALTER TABLE products ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
         if "category" not in columns:
-            connection.executemany("INSERT OR IGNORE INTO categories VALUES (?, ?)",
+            connection.executemany("INSERT INTO categories VALUES (?, ?) ON CONFLICT DO NOTHING",
                                    [(name, name.casefold()) for name in set(DEMO_CATEGORIES.values())])
             connection.executemany("UPDATE products SET category = ? WHERE image = ?",
                                    [(name, image) for image, name in DEMO_CATEGORIES.items()])
 
+
+
+def lock_writes(connection, *tables):
+    if database_url:
+        connection.lock(*tables)
+    else:
+        connection.execute("BEGIN IMMEDIATE")
 
 
 @app.teardown_appcontext
@@ -125,7 +146,7 @@ def create_users():
         secret = secret or secrets.token_urlsafe(12)
         with connection:
             created = connection.execute(
-                "INSERT OR IGNORE INTO users(username, password_hash, role) VALUES (?, ?, ?)",
+                "INSERT INTO users(username, password_hash, role) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
                 (username, generate_password_hash(secret), role),
             ).rowcount
         if created:
@@ -138,6 +159,8 @@ def create_users():
 
 @app.before_request
 def protect_register():
+    if deployed and (not database_url or not app.secret_key):
+        abort(503, "Caja QR todavía no está configurada para el servidor.")
     username = session.get("username")
     g.user = db().execute("SELECT username, role FROM users WHERE username = ?", (username,)).fetchone() if username else None
     if request.endpoint in {"register", "inventory", "sales_page"} and g.user is None:
@@ -220,7 +243,7 @@ def categories():
     connection = db()
     if request.method == "GET":
         return jsonify([row["name"] for row in connection.execute(
-            "SELECT name FROM categories ORDER BY name COLLATE NOCASE"
+            "SELECT name FROM categories ORDER BY LOWER(name), name"
         )])
     if g.user["role"] != "admin":
         abort(403, "Solo el administrador puede crear categorías.")
@@ -231,7 +254,7 @@ def categories():
     if not 1 <= len(name) <= 48 or name.casefold() == "sin categoría":
         abort(400, "Ingresá un nombre de categoría de hasta 48 caracteres.")
     with connection:
-        created = connection.execute("INSERT OR IGNORE INTO categories VALUES (?, ?)",
+        created = connection.execute("INSERT INTO categories VALUES (?, ?) ON CONFLICT DO NOTHING",
                                      (name, name.casefold())).rowcount
         if not created:
             abort(409, "Ya existe una categoría con ese nombre.")
@@ -263,7 +286,7 @@ def products():
     except (AttributeError, KeyError, TypeError, ValueError, InvalidOperation):
         abort(400, "Revisá el nombre, el precio y el stock.")
     with connection:
-        connection.execute("BEGIN IMMEDIATE")
+        lock_writes(connection, "products")
         if category and not connection.execute("SELECT 1 FROM categories WHERE name = ?", (category,)).fetchone():
             abort(400, "Elegí una categoría existente.")
         if product_id is None:
@@ -337,10 +360,10 @@ def sales():
     total = sum(item["quantity"] * item["unit"] for item in items)
     with connection:
         sale_id = connection.execute(
-            "INSERT INTO sales(token, items, total, seller, sold_on) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO sales(token, items, total, seller, sold_on) VALUES (?, ?, ?, ?, ?) RETURNING id",
             (token, json.dumps(items), total, g.user["username"],
              datetime.now(ZoneInfo("America/Argentina/Buenos_Aires")).date().isoformat()),
-        ).lastrowid
+        ).fetchone()["id"]
         payload = qr_payload(sale_id, token, items, total)
     return jsonify(payload), 201
 
@@ -372,7 +395,7 @@ def update_sale(sale_id, action):
     if action not in {"entregar", "verificar", "cancelar"}:
         abort(404)
     with db() as connection:
-        connection.execute("BEGIN IMMEDIATE")
+        lock_writes(connection, "products", "sales")
         sale = connection.execute(
             """SELECT items, delivered, verified, canceled, seller, receipt IS NOT NULL AS received
                FROM sales WHERE id = ?""", (sale_id,)
@@ -451,6 +474,7 @@ def buyer(token):
                                    (receipt, sale["id"]))
             return Response(status=303, headers={"Location": url_for("buyer", token=token)})
     return render_template("buyer.html", sale=sale, items=json.loads(sale["items"]),
+                           upload_limit=4 if deployed else 6,
                            token=token, error=error), 400 if error else 200
 
 

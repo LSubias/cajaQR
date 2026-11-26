@@ -30,7 +30,7 @@ CAJA_PUBLIC_URL='http://192.168.1.20:5000' \
   .venv/bin/python -m flask --app app run --host 0.0.0.0
 ```
 
-El prototipo guarda ventas, productos y comprobantes en SQLite dentro de `instance/`. La integración con el proyecto Supabase compartido y el despliegue con HTTPS quedan pendientes.
+El prototipo guarda ventas, productos y comprobantes en SQLite dentro de `instance/`. Cuando se configura PostgreSQL, la app usa el esquema `cajaqr` para guardar datos fuera de la instancia de Vercel.
 
 ## Catálogo de prueba
 
@@ -41,3 +41,13 @@ Fotos de muestra de Unsplash: [remera](https://unsplash.com/photos/white-crew-ne
 ## Reportes y permisos
 
 El administrador edita el stock y ve todas las ventas. Los vendedores consultan el stock y gestionan sus propias ventas. El panel general y el filtro por empleado usan ventas con pago verificado. El día se registra al crear la venta en horario de Buenos Aires. Las ventas previas a la incorporación de cuentas quedan sin empleado ni fecha registrados.
+
+## Vercel y Supabase
+
+1. Ejecutá [supabase/cajaqr.sql](supabase/cajaqr.sql) en el editor SQL del proyecto Supabase compartido. Crea el esquema privado `cajaqr`, sus tablas y las categorías iniciales.
+2. Configurá localmente `CAJA_DATABASE_URL` con la URL del **Session pooler** de Supabase con TLS. En el entorno del servidor usá una cuenta PostgreSQL dedicada con acceso de lectura y escritura al esquema `cajaqr`. Concedele `USAGE` en el esquema, `SELECT, INSERT, UPDATE` en las tablas y `USAGE` en las secuencias del esquema. Reservá las credenciales de propietario para instalar el esquema.
+3. Con esa conexión configurada, ejecutá `.venv/bin/python -m flask --app app crear-usuarios` y `.venv/bin/python demo_catalog.py` desde esta carpeta. El primer comando genera contraseñas para las cuentas nuevas. Conviene guardar esas contraseñas antes de cerrar la terminal.
+4. Importá el repositorio en Vercel como Flask. Configurá `CAJA_DATABASE_URL` y un valor aleatorio de al menos 32 bytes para `CAJA_SESSION_KEY` como variables privadas del entorno a desplegar. `CAJA_PUBLIC_URL` es opcional si se usa el dominio de producción del proyecto de Vercel. Para una prueba con QR desde el celular, la página del comprador tiene que ser accesible desde esa URL.
+5. Después de desplegar, probá el login, una venta con QR, la subida de una imagen de prueba desde otro dispositivo y la entrega desde Caja.
+
+La instalación remota arranca con sus propios usuarios, catálogo y ventas. Los datos de prueba guardados en el SQLite local quedan en esa computadora.

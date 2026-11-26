@@ -28,7 +28,7 @@
       <label>Elegí la captura después de transferir
         <input type="file" name="receipt" accept="image/jpeg,image/png,image/webp" required>
       </label>
-      <small>JPG, PNG o WebP. Hasta 6 MB.</small>
+      <small>JPG, PNG o WebP. Hasta {{ upload_limit }} MB.</small>
       {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
       <button>Subir comprobante</button>
     </form>

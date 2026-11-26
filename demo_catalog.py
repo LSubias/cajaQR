@@ -1,5 +1,5 @@
 """Cargar productos y talles de prueba sin modificar el stock existente."""
-from app import DEMO_CATEGORIES, app, db
+from app import DEMO_CATEGORIES, app, db, lock_writes
 
 CATALOG = [
     ("Remera básica blanca", 18_500, "remera.webp", ("XS", "S", "M", "L", "XL", "XXL")),
@@ -12,7 +12,7 @@ CATALOG = [
 def load_catalog():
     inserted = 0
     with app.app_context(), db() as connection:
-        connection.execute("BEGIN IMMEDIATE")
+        lock_writes(connection, "products")
         for name, price, image, sizes in CATALOG:
             for index, size in enumerate(sizes):
                 inserted += connection.execute("""
