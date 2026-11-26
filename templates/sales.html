@@ -2,10 +2,17 @@
 {% block title %}Ventas · Caja QR{% endblock %}
 {% block content %}
 <main data-page="sales">
-  <h1>Ventas</h1>
+  <div class="sales-heading">
+    <h1>Ventas</h1>
+    {% if g.user.role == "admin" %}
+    <a href="#resumen" class="button-link secondary">Ver resumen</a>
+    {% endif %}
+  </div>
   <p id="message" role="status"></p>
+  <section id="qr" class="panel stack" aria-label="QR de la venta" hidden></section>
+  <div id="sales" class="stack"></div>
   {% if g.user.role == "admin" %}
-  <section class="panel stack">
+  <section id="resumen" class="panel stack sales">
     <div class="dashboard-header">
       <div>
         <h2>Resumen de ventas</h2>
@@ -29,10 +36,5 @@
     </div>
   </section>
   {% endif %}
-  <section id="qr" class="panel stack sales" aria-label="QR de la venta" hidden></section>
-  <section class="panel stack sales">
-    <h2>{{ "Historial" if g.user.role == "admin" else "Mis ventas" }}</h2>
-    <div id="sales"></div>
-  </section>
 </main>
 {% endblock %}

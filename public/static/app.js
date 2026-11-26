@@ -10,6 +10,31 @@ function element(tag, content, className) {
   return node;
 }
 
+const iconPaths = {
+  qr: "M3 3h6v6H3z M15 3h6v6h-6z M3 15h6v6H3z M15 15h3v3h3 M15 21h3 M21 15v1 M21 21v.01",
+  receipt: "M6 3h12v18l-3-2-3 2-3-2-3 2z M9 8h6 M9 12h6",
+  check: "m5 12 4 4L19 6",
+  box: "M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10",
+  clock: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 7v5l3 2",
+  close: "m6 6 12 12 M18 6 6 18",
+  arrow: "M5 12h14 M13 6l6 6-6 6",
+  plus: "M12 5v14 M5 12h14",
+  down: "m6 9 6 6 6-6"
+};
+
+function addIcon(node, type) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.classList.add("action-icon");
+  const path = document.createElementNS(svg.namespaceURI, "path");
+  path.setAttribute("d", iconPaths[type]);
+  svg.append(path);
+  node.prepend(svg);
+  node.classList.add("with-icon");
+  return node;
+}
+
 function productName(product) {
   return product.name + (product.size ? " · Talle " + product.size : "");
 }
@@ -79,6 +104,7 @@ function renderProducts(container, products, selection, buttonLabel, onClick, un
       });
       update();
       const controls = element("div", undefined, "variant-controls");
+      if (buttonLabel === "Agregar") addIcon(button, "plus");
       controls.append(price, select);
       if (buttonLabel) controls.append(button);
       row.append(productLabel(variants.find((variant) => variant.image) || variants[0]), controls);
@@ -268,6 +294,7 @@ function showQr(sale) {
   const code = element("div", undefined, "sale-qr");
   const historyLink = element("a", "Ver venta en el historial");
   historyLink.href = "/ventas#sale-" + sale.id;
+  addIcon(historyLink, "arrow");
   code.append(image, link);
   if (page === "register") code.append(historyLink);
   const content = element("div", undefined, "qr-layout");
@@ -441,6 +468,121 @@ function renderSalesReports(verified) {
   }
 }
 
+function renderSaleCards(container, sales, showSeller, refresh) {
+  const open = new Set([...container.querySelectorAll("details[open]")].map((details) =>
+    details.closest(".sale-card").id));
+  if (!container.dataset.snapshot && location.hash.startsWith("#sale-")) open.add(location.hash.slice(1));
+
+  function cardFor(sale) {
+    const card = element("article", undefined, "sale-card");
+    card.id = "sale-" + sale.id;
+    const heading = element("div", undefined, "sale-card-heading");
+    const title = element("div");
+    title.append(element("h3", "Venta #" + sale.id));
+    if (showSeller) title.append(element("small", sale.seller || "Sin asignar"));
+    heading.append(title, element("strong", money(sale.total), "sale-amount"));
+    const states = element("div", undefined, "sale-states");
+    states.append(
+      addIcon(element("span", sale.verified ? "Pago verificado"
+        : sale.received ? "Comprobante recibido" : "Esperando comprobante",
+      "sale-state " + (sale.verified ? "state-done" : "state-wait")), sale.received ? "receipt" : "clock"),
+      addIcon(element("span", sale.delivered ? "Entregada" : "Por entregar",
+        "sale-state " + (sale.delivered ? "state-done" : "state-neutral")), sale.delivered ? "check" : "box")
+    );
+    card.append(heading, states);
+
+    async function update(endpoint, button, message) {
+      button.disabled = true;
+      try {
+        await post("/api/ventas/" + sale.id + "/" + endpoint, {});
+        await refresh();
+        report(message);
+      } catch (error) {
+        report(error);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    const actions = element("div", undefined, "actions sale-card-actions");
+    const receipt = element("a", "Ver comprobante", "button-link secondary");
+    receipt.href = "/api/ventas/" + sale.id + "/comprobante";
+    receipt.target = "_blank";
+    receipt.rel = "noopener";
+    if (!sale.received) {
+      const qr = action("Mostrar QR", async () => {
+        qr.disabled = true;
+        try {
+          showQr(await api("/api/ventas/" + sale.id + "/qr"));
+        } catch (error) {
+          report(error);
+        } finally {
+          qr.disabled = false;
+        }
+      });
+      actions.append(addIcon(qr, "qr"));
+    } else {
+      actions.append(addIcon(receipt, "receipt"));
+      if (!sale.delivered) {
+        const deliver = action("Entregar", () => update("entregar", deliver, "Entrega registrada. Stock actualizado."));
+        actions.append(addIcon(deliver, "box"));
+      }
+      if (!sale.verified) {
+        const verify = action("Verificar pago", () => update("verificar", verify, "Pago verificado."), "secondary");
+        actions.append(addIcon(verify, "check"));
+      }
+    }
+    card.append(actions);
+
+    const details = element("details", undefined, "sale-card-details");
+    details.open = open.has(card.id);
+    const body = element("div", undefined, "stack sale-detail");
+    const link = element("a", "Abrir página de la venta");
+    link.href = new URL(sale.link).pathname;
+    const buyerLink = element("a", "Enlace para el celular");
+    buyerLink.href = sale.link;
+    body.append(saleBreakdown(sale), link, buyerLink);
+    if (!sale.verified) {
+      const confirmation = element("div", undefined, "stack sale-confirmation");
+      confirmation.hidden = true;
+      const cancel = action("Cancelar venta", () => {
+        confirmation.hidden = false;
+        keep.focus();
+      }, "secondary cancel-sale");
+      const keep = action("Conservar venta", () => {
+        confirmation.hidden = true;
+        cancel.focus();
+      }, "secondary");
+      const confirm = action("Confirmar cancelación",
+        () => update("cancelar", confirm, "Venta #" + sale.id + " cancelada."), "secondary cancel-sale");
+      const controls = element("div", undefined, "actions");
+      controls.append(keep, confirm);
+      confirmation.append(element("p", sale.delivered
+        ? "La venta se cancelará y las unidades volverán al stock."
+        : "La venta se cancelará y su QR dejará de funcionar."), controls);
+      body.append(addIcon(cancel, "close"), confirmation);
+    }
+    details.append(addIcon(element("summary", "Detalle de la venta"), "down"), body);
+    card.append(details);
+    return card;
+  }
+
+  const priority = (sale) => sale.received ? Number(Boolean(sale.delivered)) : 2;
+  const pending = sales.filter((sale) => !sale.verified || !sale.delivered)
+    .sort((a, b) => priority(a) - priority(b) || b.id - a.id);
+  const groups = [
+    ["Para atender", pending],
+    ["Completadas", sales.filter((sale) => sale.verified && sale.delivered)]
+  ].filter(([, items]) => items.length);
+  container.replaceChildren(...(groups.length ? groups.map(([name, items]) => {
+    const section = element("section", undefined, "stack sale-group");
+    const cards = element("div", undefined, "sale-grid");
+    cards.append(...items.map(cardFor));
+    section.append(element("h2", name), cards);
+    return section;
+  }) : [element("p", "Todavía no hay ventas.", "panel")]));
+}
+
 async function salesPage() {
   const employee = byId("employee");
   const products = employee ? await getProducts() : [];
@@ -475,89 +617,10 @@ async function salesPage() {
       hideQr();
     }
     const container = byId("sales");
-    const open = new Set(Array.from(container.querySelectorAll("details[open]"), ({ id }) => id));
-    const focusedSale = location.hash.slice(1);
-    if (!container.dataset.snapshot && focusedSale) open.add(focusedSale);
-    const rows = sales.map((sale) => {
-      const row = element("details");
-      row.id = "sale-" + sale.id;
-      row.open = open.has(row.id);
-      row.append(element("summary", "#" + sale.id + " · " + money(sale.total) + " · " +
-        (sale.received ? "Comprobante recibido" : "Esperando comprobante") + " · " +
-        (sale.delivered ? "Entregada" : "Pendiente de entrega") + " · " +
-        (sale.verified ? "Pago verificado" : "Pago pendiente de verificar") +
-        (employee ? " · " + (sale.seller || "Sin asignar") : "")));
-      const body = element("div", undefined, "stack sale-detail");
-      const link = element("a", "Abrir página de la venta");
-      link.href = new URL(sale.link).pathname;
-      const buyerLink = element("a", "Enlace para el celular");
-      buyerLink.href = sale.link;
-      body.append(saleBreakdown(sale), link, buyerLink);
-      if (sale.received) {
-        const receipt = element("a", "Ver comprobante");
-        receipt.href = "/api/ventas/" + sale.id + "/comprobante";
-        receipt.target = "_blank";
-        receipt.rel = "noopener";
-        body.append(receipt);
-        const buttons = element("div", undefined, "actions");
-        for (const [done, label, endpoint] of [
-          [sale.delivered, "Registrar entrega y descontar stock", "entregar"],
-          [sale.verified, "Marcar pago verificado", "verificar"]
-        ]) {
-          if (done) continue;
-          const button = action(label, async () => {
-            button.disabled = true;
-            try {
-              await post("/api/ventas/" + sale.id + "/" + endpoint, {});
-              await refreshSales();
-              report(endpoint === "entregar"
-                ? "Entrega registrada. Stock actualizado."
-                : "Pago verificado." + (sale.delivered ? "" : " La entrega sigue pendiente."));
-            } catch (error) {
-              report(error);
-              button.disabled = false;
-            }
-          }, "secondary");
-          buttons.append(button);
-        }
-        body.append(buttons);
-      }
-      if (!sale.received) {
-        const regenerate = action("Regenerar QR", async () => {
-          regenerate.disabled = true;
-          try {
-            showQr(await api("/api/ventas/" + sale.id + "/qr"));
-          } catch (error) {
-            report(error);
-          } finally {
-            regenerate.disabled = false;
-          }
-        }, "secondary");
-        body.append(regenerate);
-      }
-      if (!sale.verified) {
-        const cancel = action("Cancelar venta", async () => {
-          const detail = sale.delivered ? " Se devolverán al stock las unidades de esta venta." : "";
-          if (!window.confirm("¿Cancelar la venta #" + sale.id + "?" + detail)) return;
-          cancel.disabled = true;
-          try {
-            await post("/api/ventas/" + sale.id + "/cancelar", {});
-            await refreshSales();
-            report("Venta #" + sale.id + " cancelada.");
-          } catch (error) {
-            report(error);
-            cancel.disabled = false;
-          }
-        }, "secondary cancel-sale");
-        body.append(cancel);
-      }
-      row.append(body);
-      return row;
-    });
     const snapshot = JSON.stringify(sales);
     if (snapshot !== container.dataset.snapshot) {
+      renderSaleCards(container, sales, Boolean(employee), refreshSales);
       container.dataset.snapshot = snapshot;
-      container.replaceChildren(...(rows.length ? rows : [element("p", "Todavía no hay ventas.")]));
       updateDashboard();
     }
   }
@@ -583,7 +646,7 @@ async function registerPage() {
   const cart = new Map();
   const selection = new Map();
   const search = byId("search");
-  const create = byId("create");
+  const create = addIcon(byId("create"), "qr");
 
   function change(id, amount) {
     const current = cart.get(id) || 0;
