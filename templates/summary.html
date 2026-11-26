@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Resumen de ventas · Caja QR{% endblock %}
+{% block content %}
+<main data-page="summary">
+  <h1>Resumen de ventas</h1>
+  <p id="message" role="status"></p>
+  <section class="panel stack">
+    <div class="dashboard-header">
+      <div>
+        <small>Ventas con el pago verificado.</small>
+      </div>
+      <label>Empleado
+        <select id="employee"><option value="">Todos los empleados</option></select>
+      </label>
+    </div>
+    <div id="sales-metrics" class="metric-grid"></div>
+    <div id="sales-rankings" class="metric-grid"></div>
+    <div class="report-grid">
+      <section class="metric-card">
+        <h3>Ventas por empleado</h3>
+        <div id="employee-report"></div>
+      </section>
+      <section class="metric-card">
+        <h3>Ventas por día</h3>
+        <div id="daily-report"></div>
+      </section>
+    </div>
+  </section>
+</main>
+{% endblock %}

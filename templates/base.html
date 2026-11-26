@@ -9,13 +9,20 @@
   <script type="module" src="{{ url_for('static', filename='app.js') }}"></script>
 </head>
 <body>
-  <header class="top"><strong>Caja QR</strong>
+  <header class="top">
+    <div class="brand">
+      <img class="brand-logo" src="{{ url_for('static', filename='brand/neda-logo.png') }}" alt="NEDA Software Solutions">
+      <strong>Caja QR</strong>
+    </div>
     {% block header_actions %}{% endblock %}
     {% if g.user and request.endpoint != 'buyer' %}
     <nav aria-label="Principal">
       <a href="/" {% if request.endpoint == 'register' %}aria-current="page"{% endif %}>Caja</a>
       <a href="/stock" {% if request.endpoint == 'inventory' %}aria-current="page"{% endif %}>Stock</a>
       <a href="/ventas" {% if request.endpoint == 'sales_page' %}aria-current="page"{% endif %}>Ventas</a>
+      {% if g.user.role == 'admin' %}
+      <a href="{{ url_for('sales_summary') }}" {% if request.endpoint == 'sales_summary' %}aria-current="page"{% endif %}>Resumen</a>
+      {% endif %}
     </nav>
     <span class="operator-name">{{ g.user.username }}</span>
     <form action="/salir" method="post">

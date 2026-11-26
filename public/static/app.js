@@ -583,15 +583,23 @@ function renderSaleCards(container, sales, showSeller, refresh) {
   }) : [element("p", "Todavía no hay ventas.", "panel")]));
 }
 
-async function salesPage() {
+async function summaryPage() {
   const employee = byId("employee");
-  const products = employee ? await getProducts() : [];
-  let latestSales = [];
+  const [products, usernames, sales] = await Promise.all([
+    getProducts(), api("/api/empleados"), api("/api/ventas")
+  ]);
+  let latestSales = sales;
+  let snapshot = JSON.stringify(sales);
+
+  for (const username of usernames) {
+    const option = element("option", username);
+    option.value = username;
+    employee.append(option);
+  }
+
   function updateDashboard() {
-    if (!employee) return;
-    let unassigned = employee.querySelector('option[value="unassigned"]');
-    if (!unassigned && latestSales.some((sale) => !sale.seller)) {
-      unassigned = element("option", "Sin asignar");
+    if (latestSales.some((sale) => !sale.seller) && !employee.querySelector('option[value="unassigned"]')) {
+      const unassigned = element("option", "Sin asignar");
       unassigned.value = "unassigned";
       employee.append(unassigned);
     }
@@ -600,35 +608,22 @@ async function salesPage() {
       : latestSales;
     renderDashboard(filtered, products);
   }
-  if (employee) {
-    const usernames = await api("/api/empleados");
-    for (const username of usernames) {
-      const option = element("option", username);
-      option.value = username;
-      employee.append(option);
-    }
-    employee.addEventListener("change", updateDashboard);
-  }
-  async function refreshSales() {
-    const sales = await api("/api/ventas");
-    latestSales = sales;
-    const qr = byId("qr");
-    if (qr.dataset.saleId && !sales.some((sale) => String(sale.id) === qr.dataset.saleId)) {
-      hideQr();
-    }
-    const container = byId("sales");
-    const snapshot = JSON.stringify(sales);
-    if (snapshot !== container.dataset.snapshot) {
-      renderSaleCards(container, sales, Boolean(employee), refreshSales);
-      container.dataset.snapshot = snapshot;
-      updateDashboard();
-    }
-  }
+  employee.addEventListener("change", updateDashboard);
+  updateDashboard();
+  pollSales(async () => {
+    const updated = await api("/api/ventas");
+    const nextSnapshot = JSON.stringify(updated);
+    if (nextSnapshot === snapshot) return;
+    latestSales = updated;
+    snapshot = nextSnapshot;
+    updateDashboard();
+  });
+}
 
-  await refreshSales();
+function pollSales(refresh) {
   async function poll() {
     try {
-      await refreshSales();
+      await refresh();
     } catch (error) {
       report(error);
     } finally {
@@ -636,6 +631,25 @@ async function salesPage() {
     }
   }
   setTimeout(poll, 3000);
+}
+
+async function salesPage() {
+  const container = byId("sales");
+  async function refreshSales() {
+    const sales = await api("/api/ventas");
+    const qr = byId("qr");
+    if (qr.dataset.saleId && !sales.some((sale) => String(sale.id) === qr.dataset.saleId)) {
+      hideQr();
+    }
+    const snapshot = JSON.stringify(sales);
+    if (snapshot !== container.dataset.snapshot) {
+      renderSaleCards(container, sales, container.dataset.showSeller === "true", refreshSales);
+      container.dataset.snapshot = snapshot;
+    }
+  }
+
+  await refreshSales();
+  pollSales(refreshSales);
   const focusedSale = document.getElementById(location.hash.slice(1));
   focusedSale?.scrollIntoView({ block: "nearest" });
 }
@@ -720,6 +734,7 @@ async function registerPage() {
 
 if (page === "register") registerPage().catch(report);
 if (page === "sales") salesPage().catch(report);
+if (page === "summary") summaryPage().catch(report);
 if (page === "stock") stockPage().catch(report);
 
 const goBack = byId("go-back");

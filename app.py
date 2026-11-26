@@ -163,7 +163,7 @@ def protect_register():
         abort(503, "Caja QR todavía no está configurada para el servidor.")
     username = session.get("username")
     g.user = db().execute("SELECT username, role FROM users WHERE username = ?", (username,)).fetchone() if username else None
-    if request.endpoint in {"register", "inventory", "sales_page"} and g.user is None:
+    if request.endpoint in {"register", "inventory", "sales_page", "sales_summary"} and g.user is None:
         return redirect(url_for("login"))
     if request.endpoint in {"sales", "update_sale", "register_receipt", "products", "sale_qr", "employees", "categories"} and g.user is None:
         return "Iniciá sesión.", 401
@@ -319,6 +319,13 @@ def register():
 @app.get("/ventas")
 def sales_page():
     return render_template("sales.html")
+
+
+@app.get("/resumen")
+def sales_summary():
+    if g.user["role"] != "admin":
+        abort(403, "El resumen está disponible para el administrador.")
+    return render_template("summary.html")
 
 
 @app.get("/api/empleados")
